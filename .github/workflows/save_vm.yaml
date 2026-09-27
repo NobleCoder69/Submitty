@@ -11,6 +11,10 @@ permissions:
 jobs:
   vagrant-up:
     runs-on: macos-15-intel
+    env:
+      HCP_CLIENT_ID: ${{ secrets.HCP_CLIENT_ID }}
+      HCP_CLIENT_SECRET: ${{ secrets.HCP_CLIENT_SECRET }}
+      VAGRANT_CLOUD_TOKEN_SECRET: ${{ secrets.VAGRANT_CLOUD_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -29,6 +33,7 @@ jobs:
           hdiutil unmount /Volumes/VirtualBox
 
       - name: Install HCP CLI
+        if: ${{ env.HCP_CLIENT_ID != '' && env.HCP_CLIENT_SECRET != '' && env.VAGRANT_CLOUD_TOKEN_SECRET != '' }}
         run: |
           brew tap hashicorp/tap
           brew install hashicorp/tap/hcp
@@ -54,17 +59,19 @@ jobs:
         run: vagrant package --output submitty.box
 
       - name: Get HCP token
+        if: ${{ env.HCP_CLIENT_ID != '' && env.HCP_CLIENT_SECRET != '' && env.VAGRANT_CLOUD_TOKEN_SECRET != '' }}
         id: hcp-token
-        env:
-          HCP_CLIENT_ID: ${{ secrets.HCP_CLIENT_ID }}
-          HCP_CLIENT_SECRET: ${{ secrets.HCP_CLIENT_SECRET }}
         run: |
           hcp auth login --client-id="$HCP_CLIENT_ID" --client-secret="$HCP_CLIENT_SECRET"
           echo "HCP_TOKEN=$(hcp auth print-access-token)" >> $GITHUB_OUTPUT
 
+      - name: Skip image publish (missing secrets)
+        if: ${{ env.HCP_CLIENT_ID == '' || env.HCP_CLIENT_SECRET == '' || env.VAGRANT_CLOUD_TOKEN_SECRET == '' }}
+        run: echo "Skipping image publish because required HCP/Vagrant Cloud secrets are not configured for this repository."
+
       - name: Publish image
+        if: ${{ env.HCP_CLIENT_ID != '' && env.HCP_CLIENT_SECRET != '' && env.VAGRANT_CLOUD_TOKEN_SECRET != '' }}
         env:
-          VAGRANT_CLOUD_TOKEN_SECRET: ${{ secrets.VAGRANT_CLOUD_TOKEN }}
           HCP_TOKEN: ${{ steps.hcp-token.outputs.HCP_TOKEN }}
           IMAGE_VERSION: ${{ steps.get-version.outputs.version }}
         run: |
